@@ -7,7 +7,10 @@
     android:paddingEnd="16dp"
     android:paddingTop="8dp"
     android:paddingBottom="8dp"
-    android:background="?attr/selectableItemBackground">
+    android:background="@drawable/ripple_m3"
+    android:focusable="true"
+    android:clickable="true"
+    android:focusableInTouchMode="false">
 
     <TextView
         android:id="@+id/tv_file_name"
