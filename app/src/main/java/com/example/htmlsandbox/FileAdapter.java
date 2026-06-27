@@ -12,10 +12,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.List;
 
-public class FileAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
-
-    private static final int TYPE_GROUP = 0;
-    private static final int TYPE_FILE = 1;
+public class FileAdapter extends RecyclerView.Adapter<FileAdapter.GroupViewHolder> {
 
     private final List<GroupItem> groups;
     private final OnFileClickListener listener;
@@ -29,53 +26,38 @@ public class FileAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         this.listener = listener;
     }
 
-    @Override
-    public int getItemViewType(int position) {
-        return groups.get(position).isFile ? TYPE_FILE : TYPE_GROUP;
-    }
-
     @NonNull
     @Override
-    public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        LayoutInflater inflater = LayoutInflater.from(parent.getContext());
-        if (viewType == TYPE_GROUP) {
-            return new GroupViewHolder(inflater.inflate(R.layout.item_group, parent, false));
-        } else {
-            return new FileViewHolder(inflater.inflate(R.layout.item_file, parent, false));
-        }
+    public GroupViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+        View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_group, parent, false);
+        return new GroupViewHolder(view);
     }
 
     @Override
-    public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
+    public void onBindViewHolder(@NonNull GroupViewHolder holder, int position) {
         GroupItem group = groups.get(position);
-        if (holder instanceof GroupViewHolder) {
-            GroupViewHolder gv = (GroupViewHolder) holder;
-            gv.name.setText(group.groupName);
-            gv.count.setText(group.files.size() + " 个文件");
-            gv.icon.setRotation(group.expanded ? 90 : 0);
-            gv.content.removeAllViews();
-            if (group.expanded) {
-                gv.content.setVisibility(View.VISIBLE);
-                for (MainActivity.FileItem fi : group.files) {
-                    View row = LayoutInflater.from(gv.content.getContext()).inflate(R.layout.item_file_row, gv.content, false);
-                    ((TextView) row.findViewById(R.id.tv_file_name)).setText(fi.name);
-                    row.setOnClickListener(v -> listener.onFileClick(fi));
-                    gv.content.addView(row);
-                }
-            } else {
-                gv.content.setVisibility(View.GONE);
+        holder.name.setText(group.title);
+        holder.count.setText(group.files.size() + " 个文件");
+        holder.icon.setRotation(group.expanded ? 90 : 0);
+        holder.content.removeAllViews();
+
+        if (group.expanded) {
+            holder.content.setVisibility(View.VISIBLE);
+            for (MainActivity.FileItem fi : group.files) {
+                View row = LayoutInflater.from(holder.content.getContext()).inflate(R.layout.item_file_row, holder.content, false);
+                ((TextView) row.findViewById(R.id.tv_file_name)).setText(fi.name);
+                ((TextView) row.findViewById(R.id.tv_file_path)).setText("/" + fi.relativePath);
+                row.setOnClickListener(v -> listener.onFileClick(fi));
+                holder.content.addView(row);
             }
-            gv.itemView.setOnClickListener(v -> {
-                group.expanded = !group.expanded;
-                notifyItemChanged(position);
-            });
-        } else if (holder instanceof FileViewHolder) {
-            FileViewHolder fv = (FileViewHolder) holder;
-            MainActivity.FileItem fi = group.files.get(0);
-            fv.name.setText(fi.name);
-            fv.path.setText("/" + fi.relativePath);
-            fv.itemView.setOnClickListener(v -> listener.onFileClick(fi));
+        } else {
+            holder.content.setVisibility(View.GONE);
         }
+
+        holder.itemView.setOnClickListener(v -> {
+            group.expanded = !group.expanded;
+            notifyItemChanged(position);
+        });
     }
 
     @Override
@@ -97,35 +79,20 @@ public class FileAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         }
     }
 
-    static class FileViewHolder extends RecyclerView.ViewHolder {
-        TextView name, path;
-
-        FileViewHolder(View itemView) {
-            super(itemView);
-            name = itemView.findViewById(R.id.tv_file_name);
-            path = itemView.findViewById(R.id.tv_file_path);
-        }
-    }
-
     public static class GroupItem {
-        String groupName;
+        String title;
         boolean expanded;
-        boolean isFile; // false = group header, true = single file (no children)
         List<MainActivity.FileItem> files;
 
-        // For directory group
-        public GroupItem(String groupName, List<MainActivity.FileItem> files) {
-            this.groupName = groupName;
+        public GroupItem(String title, List<MainActivity.FileItem> files) {
+            this.title = title;
             this.files = files;
-            this.isFile = false;
             this.expanded = false;
         }
 
-        // For single file in root
         public GroupItem(MainActivity.FileItem singleFile) {
-            this.groupName = singleFile.name;
+            this.title = singleFile.name;
             this.files = java.util.Collections.singletonList(singleFile);
-            this.isFile = true;
             this.expanded = false;
         }
     }
