@@ -3,22 +3,28 @@ package com.example.htmlsandbox;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.widget.Button;
-import android.widget.TextView;
+import android.widget.LinearLayout;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.documentfile.provider.DocumentFile;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.color.DynamicColors;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -26,13 +32,23 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
+import java.util.Stack;
 
 public class MainActivity extends AppCompatActivity {
-    private WebView webView;
-    private TextView statusView;
-    private File sandboxRoot;
 
+    private LinearLayout layoutList, layoutViewer;
+    private RecyclerView recyclerView;
+    private WebView webView;
+    private MaterialToolbar toolbar, toolbarViewer;
+    private FileAdapter adapter;
+    private final List<FileItem> fileItems = new ArrayList<>();
+    private File sandboxRoot;
+    private boolean isViewerMode = false;
+
+    // SAF launcher: import directory
     private final ActivityResultLauncher<Uri> pickTree = registerForActivityResult(
             new ActivityResultContracts.OpenDocumentTree(),
             uri -> {
@@ -40,6 +56,17 @@ public class MainActivity extends AppCompatActivity {
                 getContentResolver().takePersistableUriPermission(uri,
                         Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
                 importTree(uri);
+            }
+    );
+
+    // SAF launcher: import single file
+    private final ActivityResultLauncher<String[]> pickFile = registerForActivityResult(
+            new ActivityResultContracts.OpenDocument(),
+            uri -> {
+                if (uri == null) return;
+                getContentResolver().takePersistableUriPermission(uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                importSingleFile(uri);
             }
     );
 
@@ -52,20 +79,94 @@ public class MainActivity extends AppCompatActivity {
         sandboxRoot = new File(getFilesDir(), "sandbox");
         if (!sandboxRoot.exists()) sandboxRoot.mkdirs();
 
+        layoutList = findViewById(R.id.layout_list);
+        layoutViewer = findViewById(R.id.layout_viewer);
+        recyclerView = findViewById(R.id.recycler_view);
         webView = findViewById(R.id.webview);
-        statusView = findViewById(R.id.tv_status);
-        Button btnImport = findViewById(R.id.btn_import);
-        Button btnOpen = findViewById(R.id.btn_open);
-        Button btnReload = findViewById(R.id.btn_reload);
+        toolbar = findViewById(R.id.toolbar);
+        toolbarViewer = findViewById(R.id.toolbar_viewer);
+
+        setSupportActionBar(toolbar);
+
+        recyclerView.setLayoutManager(new LinearLayoutManager(this));
+        adapter = new FileAdapter(fileItems, this::onFileClicked);
+        recyclerView.setAdapter(adapter);
 
         configureWebView();
 
-        btnImport.setOnClickListener(v -> pickTree.launch(null));
-        btnOpen.setOnClickListener(v -> openSandbox());
-        btnReload.setOnClickListener(v -> reloadSandbox());
+        // Toolbar viewer back button
+        toolbarViewer.setNavigationOnClickListener(v -> exitViewer());
 
-        File index = findIndex(sandboxRoot);
-        if (index != null) loadHtml(index);
+        refreshFileList();
+    }
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        MenuInflater inflater = getMenuInflater();
+        inflater.inflate(R.menu.menu_main, menu);
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        int id = item.getItemId();
+        if (id == R.id.action_import_dir) {
+            pickTree.launch(null);
+            return true;
+        } else if (id == R.id.action_import_file) {
+            pickFile.launch(new String[]{"text/html", "*/*"});
+            return true;
+        } else if (id == R.id.action_clear_all) {
+            new MaterialAlertDialogBuilder(this)
+                    .setTitle("\u6E05\u9664\u6240\u6709")
+                    .setMessage("\u786E\u5B9A\u8981\u6E05\u9664\u6240\u6709\u5BFC\u5165\u7684\u6587\u4EF6\u5417\uFF1F")
+                    .setPositiveButton("\u786E\u5B9A", (d, w) -> {
+                        wipe(sandboxRoot);
+                        sandboxRoot.mkdirs();
+                        refreshFileList();
+                    })
+                    .setNegativeButton("\u53D6\u6D88", null)
+                    .show();
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (isViewerMode) {
+            if (webView.canGoBack()) {
+                webView.goBack();
+                return;
+            }
+            exitViewer();
+            return;
+        }
+        super.onBackPressed();
+    }
+
+    private void onFileClicked(FileItem item) {
+        enterViewer(new File(item.path));
+    }
+
+    private void enterViewer(File file) {
+        isViewerMode = true;
+        layoutList.setVisibility(android.view.View.GONE);
+        layoutViewer.setVisibility(android.view.View.VISIBLE);
+        toolbarViewer.setTitle(file.getName());
+        setSupportActionBar(toolbarViewer);
+        loadHtml(file);
+    }
+
+    private void exitViewer() {
+        isViewerMode = false;
+        layoutViewer.setVisibility(android.view.View.GONE);
+        layoutList.setVisibility(android.view.View.VISIBLE);
+        setSupportActionBar(toolbar);
+        webView.stopLoading();
+        webView.loadUrl("about:blank");
+        // Reset webview history
+        webView.clearHistory();
     }
 
     private void configureWebView() {
@@ -93,18 +194,61 @@ public class MainActivity extends AppCompatActivity {
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 return false;
             }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                toolbarViewer.setTitle(view.getTitle() != null ? view.getTitle() : view.getOriginalUrl());
+            }
         });
     }
 
     private void importTree(Uri uri) {
         try {
             DocumentFile root = DocumentFile.fromTreeUri(this, uri);
-            if (root == null || !root.isDirectory()) { toast("\u76EE\u5F55\u65E0\u6548"); return; }
-            wipe(sandboxRoot); sandboxRoot.mkdirs();
+            if (root == null || !root.isDirectory()) {
+                toast("\u76EE\u5F55\u65E0\u6548");
+                return;
+            }
+            wipe(sandboxRoot);
+            sandboxRoot.mkdirs();
             copyTree(root, sandboxRoot);
-            reloadSandbox();
-            toast("\u5DF2\u5BFC\u5165\u5230\u79C1\u6709\u6C99\u7BB1");
-        } catch (Exception e) { toast("\u5BFC\u5165\u5931\u8D25: " + e.getMessage()); }
+            refreshFileList();
+            toast("\u5DF2\u5BFC\u5165\u76EE\u5F55");
+        } catch (Exception e) {
+            toast("\u5BFC\u5165\u5931\u8D25: " + e.getMessage());
+        }
+    }
+
+    private void importSingleFile(Uri uri) {
+        try {
+            DocumentFile doc = DocumentFile.fromSingleUri(this, uri);
+            if (doc == null) {
+                toast("\u6587\u4EF6\u65E0\u6548");
+                return;
+            }
+            String name = doc.getName();
+            if (name == null || name.isEmpty()) {
+                name = "imported_" + System.currentTimeMillis() + ".html";
+            }
+            name = name.replace('/', '_').replace('\\', '_');
+            File target = new File(sandboxRoot, name);
+            if (target.getParentFile() != null) target.getParentFile().mkdirs();
+
+            InputStream in = getContentResolver().openInputStream(uri);
+            if (in == null) { toast("\u65E0\u6CD5\u8BFB\u53D6\u6587\u4EF6"); return; }
+            OutputStream out = new FileOutputStream(target);
+            byte[] buf = new byte[8192];
+            int len;
+            while ((len = in.read(buf)) != -1) out.write(buf, 0, len);
+            out.close();
+            in.close();
+
+            refreshFileList();
+            toast("\u5DF2\u5BFC\u5165: " + name);
+        } catch (Exception e) {
+            toast("\u5BFC\u5165\u5931\u8D25: " + e.getMessage());
+        }
     }
 
     private void copyTree(DocumentFile source, File targetDir) throws Exception {
@@ -113,30 +257,44 @@ public class MainActivity extends AppCompatActivity {
             if (name == null || name.isEmpty()) continue;
             name = name.replace('/', '_').replace('\\', '_');
             File target = new File(targetDir, name);
-            if (child.isDirectory()) { target.mkdirs(); copyTree(child, target); }
-            else if (child.isFile()) {
+            if (child.isDirectory()) {
+                target.mkdirs();
+                copyTree(child, target);
+            } else if (child.isFile()) {
                 if (target.getParentFile() != null) target.getParentFile().mkdirs();
                 InputStream in = getContentResolver().openInputStream(child.getUri());
                 if (in == null) continue;
                 OutputStream out = new FileOutputStream(target);
-                byte[] buf = new byte[8192]; int len;
+                byte[] buf = new byte[8192];
+                int len;
                 while ((len = in.read(buf)) != -1) out.write(buf, 0, len);
-                out.close(); in.close();
+                out.close();
+                in.close();
             }
         }
     }
 
-    private void openSandbox() {
-        File index = findIndex(sandboxRoot);
-        if (index == null) { toast("\u6C99\u7BB1\u91CC\u6CA1\u6709 index.html"); return; }
-        loadHtml(index);
+    private void refreshFileList() {
+        fileItems.clear();
+        scanFiles(sandboxRoot, "");
+        adapter.notifyDataSetChanged();
+        if (fileItems.isEmpty()) {
+            toast("\u6C99\u7BB1\u4E3A\u7A7A\uFF0C\u70B9\u53F3\u4E0A\u89D2\u83DC\u5355\u5BFC\u5165");
+        }
     }
 
-    private void reloadSandbox() {
-        webView.reload();
-        File index = findIndex(sandboxRoot);
-        if (index != null) loadHtml(index);
-        else statusView.setText("\u6C99\u7BB1\u5DF2\u5C31\u7EEA\uFF0C\u4F46\u6CA1\u6709 index.html");
+    private void scanFiles(File dir, String prefix) {
+        File[] children = dir.listFiles();
+        if (children == null) return;
+        for (File child : children) {
+            String relPath = prefix.isEmpty() ? child.getName() : prefix + "/" + child.getName();
+            if (child.isDirectory()) {
+                scanFiles(child, relPath);
+            } else if (child.getName().toLowerCase(Locale.ROOT).endsWith(".html")
+                    || child.getName().toLowerCase(Locale.ROOT).endsWith(".htm")) {
+                fileItems.add(new FileItem(child.getName(), child.getAbsolutePath(), relPath));
+            }
+        }
     }
 
     private void loadHtml(File file) {
@@ -146,14 +304,16 @@ public class MainActivity extends AppCompatActivity {
             String cache = "<meta http-equiv=\"Cache-Control\" content=\"no-cache, no-store, must-revalidate\"><meta http-equiv=\"Pragma\" content=\"no-cache\"><meta http-equiv=\"Expires\" content=\"0\">";
             html = injectHead(html, cache + "<base href=\"" + base + "\">");
             webView.loadDataWithBaseURL(base + "?t=" + System.currentTimeMillis(), html, "text/html", "UTF-8", null);
-            statusView.setText("\u5DF2\u52A0\u8F7D: " + file.getAbsolutePath());
-        } catch (Exception e) { toast("\u52A0\u8F7D\u5931\u8D25: " + e.getMessage()); }
+        } catch (Exception e) {
+            toast("\u52A0\u8F7D\u5931\u8D25: " + e.getMessage());
+        }
     }
 
     private String readText(File file) throws Exception {
         byte[] bytes = new byte[(int) file.length()];
         FileInputStream in = new FileInputStream(file);
-        int ignored = in.read(bytes); in.close();
+        int ignored = in.read(bytes);
+        in.close();
         return new String(bytes, StandardCharsets.UTF_8);
     }
 
@@ -163,16 +323,18 @@ public class MainActivity extends AppCompatActivity {
             File file = new File(path);
             if (!file.exists() || file.isDirectory()) return null;
             return new WebResourceResponse(mime(path), "UTF-8", new FileInputStream(file));
-        } catch (Exception e) { return null; }
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private String mime(String path) {
         String l = path.toLowerCase(Locale.ROOT);
-        if (l.endsWith(".html")||l.endsWith(".htm")) return "text/html";
+        if (l.endsWith(".html") || l.endsWith(".htm")) return "text/html";
         if (l.endsWith(".css")) return "text/css";
         if (l.endsWith(".js")) return "application/javascript";
         if (l.endsWith(".png")) return "image/png";
-        if (l.endsWith(".jpg")||l.endsWith(".jpeg")) return "image/jpeg";
+        if (l.endsWith(".jpg") || l.endsWith(".jpeg")) return "image/jpeg";
         if (l.endsWith(".gif")) return "image/gif";
         if (l.endsWith(".svg")) return "image/svg+xml";
         return "application/octet-stream";
@@ -185,22 +347,6 @@ public class MainActivity extends AppCompatActivity {
         return "<head>" + tag + "</head>" + html;
     }
 
-    private File findIndex(File dir) {
-        File html = new File(dir, "index.html");
-        if (html.exists()) return html;
-        File htm = new File(dir, "index.htm");
-        if (htm.exists()) return htm;
-        File[] children = dir.listFiles();
-        if (children == null) return null;
-        for (File child : children) {
-            if (child.isDirectory()) {
-                File found = findIndex(child);
-                if (found != null) return found;
-            }
-        }
-        return null;
-    }
-
     private void wipe(File file) {
         if (!file.exists()) return;
         File[] children = file.listFiles();
@@ -208,5 +354,20 @@ public class MainActivity extends AppCompatActivity {
         file.delete();
     }
 
-    private void toast(String text) { Toast.makeText(this, text, Toast.LENGTH_LONG).show(); }
+    private void toast(String text) {
+        Toast.makeText(this, text, Toast.LENGTH_SHORT).show();
+    }
+
+    // Data class
+    static class FileItem {
+        String name;
+        String path;
+        String relativePath;
+
+        FileItem(String name, String path, String relativePath) {
+            this.name = name;
+            this.path = path;
+            this.relativePath = relativePath;
+        }
+    }
 }
