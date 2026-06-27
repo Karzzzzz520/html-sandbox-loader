@@ -77,7 +77,7 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        sandboxRoot = new File(getFilesDir(), "sandbox");
+        sandboxRoot = new File(getExternalFilesDir(null), "sandbox");
         if (!sandboxRoot.exists()) sandboxRoot.mkdirs();
 
         layoutList = findViewById(R.id.layout_list);
@@ -268,7 +268,6 @@ public class MainActivity extends AppCompatActivity {
 
     private void refreshFileList() {
         groups.clear();
-
         Map<String, List<FileItem>> dirMap = new HashMap<>();
         List<FileItem> rootFiles = new ArrayList<>();
         scanFiles(sandboxRoot, "", dirMap, rootFiles);
