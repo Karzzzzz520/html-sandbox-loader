@@ -18,6 +18,8 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.documentfile.provider.DocumentFile;
 
+import com.google.android.material.color.DynamicColors;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -43,6 +45,7 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        DynamicColors.applyToActivityIfAvailable(this);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
@@ -96,12 +99,12 @@ public class MainActivity extends AppCompatActivity {
     private void importTree(Uri uri) {
         try {
             DocumentFile root = DocumentFile.fromTreeUri(this, uri);
-            if (root == null || !root.isDirectory()) { toast("目录无效"); return; }
+            if (root == null || !root.isDirectory()) { toast("\u76EE\u5F55\u65E0\u6548"); return; }
             wipe(sandboxRoot); sandboxRoot.mkdirs();
             copyTree(root, sandboxRoot);
             reloadSandbox();
-            toast("已导入到私有沙箱");
-        } catch (Exception e) { toast("导入失败: " + e.getMessage()); }
+            toast("\u5DF2\u5BFC\u5165\u5230\u79C1\u6709\u6C99\u7BB1");
+        } catch (Exception e) { toast("\u5BFC\u5165\u5931\u8D25: " + e.getMessage()); }
     }
 
     private void copyTree(DocumentFile source, File targetDir) throws Exception {
@@ -125,7 +128,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void openSandbox() {
         File index = findIndex(sandboxRoot);
-        if (index == null) { toast("沙箱里没有 index.html"); return; }
+        if (index == null) { toast("\u6C99\u7BB1\u91CC\u6CA1\u6709 index.html"); return; }
         loadHtml(index);
     }
 
@@ -133,7 +136,7 @@ public class MainActivity extends AppCompatActivity {
         webView.reload();
         File index = findIndex(sandboxRoot);
         if (index != null) loadHtml(index);
-        else statusView.setText("沙箱已就绪，但没有 index.html");
+        else statusView.setText("\u6C99\u7BB1\u5DF2\u5C31\u7EEA\uFF0C\u4F46\u6CA1\u6709 index.html");
     }
 
     private void loadHtml(File file) {
@@ -143,8 +146,8 @@ public class MainActivity extends AppCompatActivity {
             String cache = "<meta http-equiv=\"Cache-Control\" content=\"no-cache, no-store, must-revalidate\"><meta http-equiv=\"Pragma\" content=\"no-cache\"><meta http-equiv=\"Expires\" content=\"0\">";
             html = injectHead(html, cache + "<base href=\"" + base + "\">");
             webView.loadDataWithBaseURL(base + "?t=" + System.currentTimeMillis(), html, "text/html", "UTF-8", null);
-            statusView.setText("已加载: " + file.getAbsolutePath());
-        } catch (Exception e) { toast("加载失败: " + e.getMessage()); }
+            statusView.setText("\u5DF2\u52A0\u8F7D: " + file.getAbsolutePath());
+        } catch (Exception e) { toast("\u52A0\u8F7D\u5931\u8D25: " + e.getMessage()); }
     }
 
     private String readText(File file) throws Exception {
