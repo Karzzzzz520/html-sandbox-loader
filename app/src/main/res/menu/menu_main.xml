@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/action_import_dir"
+        android:title="导入目录"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_import_file"
+        android:title="导入文件"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_clear_all"
+        android:title="清空沙箱"
+        app:showAsAction="never" />
+</menu>
