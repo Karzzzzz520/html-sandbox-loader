@@ -94,9 +94,7 @@ public class MainActivity extends AppCompatActivity {
         recyclerView.setAdapter(adapter);
 
         configureWebView();
-
         toolbarViewer.setNavigationOnClickListener(v -> exitViewer());
-
         refreshFileList();
     }
 
@@ -230,7 +228,10 @@ public class MainActivity extends AppCompatActivity {
             if (target.getParentFile() != null) target.getParentFile().mkdirs();
 
             InputStream in = getContentResolver().openInputStream(uri);
-            if (in == null) { toast("无法读取文件"); return; }
+            if (in == null) {
+                toast("无法读取文件");
+                return;
+            }
             OutputStream out = new FileOutputStream(target);
             byte[] buf = new byte[8192];
             int len;
@@ -270,43 +271,51 @@ public class MainActivity extends AppCompatActivity {
 
     private void refreshFileList() {
         groups.clear();
-        Map<String, List<FileItem>> dirMap = new HashMap<>();
-        scanFiles(sandboxRoot, "", dirMap);
 
-        // Root-level files first
-        List<FileItem> rootFiles = dirMap.remove("");
-        if (rootFiles != null) {
-            for (FileItem fi : rootFiles) {
-                groups.add(new FileAdapter.GroupItem(fi));
-            }
+        Map<String, List<FileItem>> dirMap = new HashMap<>();
+        List<FileItem> rootFiles = new ArrayList<>();
+        scanFiles(sandboxRoot, "", dirMap, rootFiles);
+
+        // root-only files
+        rootFiles.sort(Comparator.comparing(item -> item.name.toLowerCase(Locale.ROOT)));
+        for (FileItem fi : rootFiles) {
+            groups.add(new FileAdapter.GroupItem(fi));
         }
 
-        // Then directory groups, sorted by name
+        // directory groups
         List<String> dirNames = new ArrayList<>(dirMap.keySet());
-        java.util.Collections.sort(dirNames);
+        dirNames.sort(String::compareTo);
         for (String dirName : dirNames) {
-            groups.add(new FileAdapter.GroupItem(dirName, dirMap.get(dirName)));
+            List<FileItem> files = dirMap.get(dirName);
+            files.sort(Comparator.comparing(item -> item.name.toLowerCase(Locale.ROOT)));
+            groups.add(new FileAdapter.GroupItem(dirName, files));
         }
 
         adapter.notifyDataSetChanged();
     }
 
-    private void scanFiles(File dir, String prefix, Map<String, List<FileItem>> dirMap) {
+    private void scanFiles(File dir, String relDir, Map<String, List<FileItem>> dirMap, List<FileItem> rootFiles) {
         File[] children = dir.listFiles();
         if (children == null) return;
         Arrays.sort(children, Comparator.comparing(File::getName));
         for (File child : children) {
-            String name = child.getName().toLowerCase(Locale.ROOT);
-            boolean isHtml = name.endsWith(".html") || name.endsWith(".htm");
             if (child.isDirectory()) {
-                scanFiles(child, prefix.isEmpty() ? child.getName() : prefix + "/" + child.getName(), dirMap);
-            } else if (isHtml) {
-                String groupKey = prefix;
-                String relPath = prefix.isEmpty() ? child.getName() : prefix + "/" + child.getName();
-                if (!dirMap.containsKey(groupKey)) {
-                    dirMap.put(groupKey, new ArrayList<>());
+                String childRelDir = relDir.isEmpty() ? child.getName() : relDir + "/" + child.getName();
+                scanFiles(child, childRelDir, dirMap, rootFiles);
+                continue;
+            }
+            String lower = child.getName().toLowerCase(Locale.ROOT);
+            if (!(lower.endsWith(".html") || lower.endsWith(".htm"))) continue;
+
+            String relPath = relDir.isEmpty() ? child.getName() : relDir + "/" + child.getName();
+            FileItem item = new FileItem(child.getName(), child.getAbsolutePath(), relPath);
+            if (relDir.isEmpty()) {
+                rootFiles.add(item);
+            } else {
+                if (!dirMap.containsKey(relDir)) {
+                    dirMap.put(relDir, new ArrayList<>());
                 }
-                dirMap.get(groupKey).add(new FileItem(child.getName(), child.getAbsolutePath(), relPath));
+                dirMap.get(relDir).add(item);
             }
         }
     }
@@ -356,8 +365,7 @@ public class MainActivity extends AppCompatActivity {
 
     private String injectHead(String html, String tag) {
         int head = html.toLowerCase(Locale.ROOT).indexOf("<head>");
-        if (head >= 0)
-            return html.substring(0, head + 6) + tag + html.substring(head + 6);
+        if (head >= 0) return html.substring(0, head + 6) + tag + html.substring(head + 6);
         return "<head>" + tag + "</head>" + html;
     }
 
