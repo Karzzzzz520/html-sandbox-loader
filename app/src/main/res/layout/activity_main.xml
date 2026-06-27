@@ -18,12 +18,24 @@
             android:background="?attr/colorSurface"
             app:title="HTML Sandbox" />
 
+        <TextView
+            android:id="@+id/tv_empty_hint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:padding="48dp"
+            android:text="沙箱为空\n点右上角菜单导入目录或文件"
+            android:textSize="14sp"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:visibility="visible" />
+
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/recycler_view"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:clipToPadding="false"
-            android:padding="12dp" />
+            android:padding="12dp"
+            android:visibility="gone" />
     </LinearLayout>
 
     <!-- 全屏 WebView 查看器 -->
