@@ -32,6 +32,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.ref.SoftReference;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -40,6 +41,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.WeakHashMap;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -52,6 +54,7 @@ public class MainActivity extends AppCompatActivity {
     private final List<FileAdapter.GroupItem> groups = new ArrayList<>();
     private File sandboxRoot;
     private boolean isViewerMode = false;
+    private final Map<String, SoftReference<String>> htmlCache = new WeakHashMap<>();
 
     private final ActivityResultLauncher<Uri> pickTree = registerForActivityResult(
             new ActivityResultContracts.OpenDocumentTree(),
@@ -92,6 +95,7 @@ public class MainActivity extends AppCompatActivity {
 
         setSupportActionBar(toolbar);
 
+        recyclerView.setHasFixedSize(true);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
         adapter = new FileAdapter(groups, this::onFileClicked);
         recyclerView.setAdapter(adapter);
@@ -122,6 +126,7 @@ public class MainActivity extends AppCompatActivity {
                     .setTitle("清除所有")
                     .setMessage("确定要清除所有导入的文件吗？")
                     .setPositiveButton("确定", (d, w) -> {
+                        htmlCache.clear();
                         wipe(sandboxRoot);
                         sandboxRoot.mkdirs();
                         refreshFileList();
@@ -155,6 +160,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void exitViewer() {
+        htmlCache.clear();
         isViewerMode = false;
         layoutViewer.setVisibility(android.view.View.GONE);
         layoutList.setVisibility(android.view.View.VISIBLE);
@@ -162,6 +168,7 @@ public class MainActivity extends AppCompatActivity {
         webView.stopLoading();
         webView.loadUrl("about:blank");
         webView.clearHistory();
+        recyclerView.requestLayout();
     }
 
     private void configureWebView() {
@@ -206,7 +213,7 @@ public class MainActivity extends AppCompatActivity {
                 toast("目录无效");
                 return;
             }
-            // Use the directory name as a subfolder under sandbox
+            htmlCache.clear();
             wipe(sandboxRoot);
             sandboxRoot.mkdirs();
 
@@ -298,6 +305,7 @@ public class MainActivity extends AppCompatActivity {
             groups.add(new FileAdapter.GroupItem(dirName, files));
         }
 
+        adapter.markAllDirty();
         adapter.notifyDataSetChanged();
 
         boolean hasFiles = !groups.isEmpty();
@@ -329,7 +337,15 @@ public class MainActivity extends AppCompatActivity {
 
     private void loadHtml(File file) {
         try {
-            String html = readText(file);
+            String html;
+            String cacheKey = file.getAbsolutePath();
+            SoftReference<String> ref = htmlCache.get(cacheKey);
+            if (ref != null && ref.get() != null) {
+                html = ref.get();
+            } else {
+                html = readText(file);
+                htmlCache.put(cacheKey, new SoftReference<>(html));
+            }
             String base = "file://" + file.getParentFile().getAbsolutePath() + "/";
             String cache = "<meta http-equiv=\"Cache-Control\" content=\"no-cache, no-store, must-revalidate\"><meta http-equiv=\"Pragma\" content=\"no-cache\"><meta http-equiv=\"Expires\" content=\"0\">";
             html = injectHead(html, cache + "<base href=\"" + base + "\">");
