@@ -13,6 +13,7 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
@@ -46,6 +47,7 @@ public class MainActivity extends AppCompatActivity {
     private RecyclerView recyclerView;
     private WebView webView;
     private MaterialToolbar toolbar, toolbarViewer;
+    private TextView tvEmptyHint;
     private FileAdapter adapter;
     private final List<FileAdapter.GroupItem> groups = new ArrayList<>();
     private File sandboxRoot;
@@ -86,6 +88,7 @@ public class MainActivity extends AppCompatActivity {
         webView = findViewById(R.id.webview);
         toolbar = findViewById(R.id.toolbar);
         toolbarViewer = findViewById(R.id.toolbar_viewer);
+        tvEmptyHint = findViewById(R.id.tv_empty_hint);
 
         setSupportActionBar(toolbar);
 
@@ -286,6 +289,11 @@ public class MainActivity extends AppCompatActivity {
         }
 
         adapter.notifyDataSetChanged();
+
+        // Toggle empty hint vs recycler
+        boolean hasFiles = !groups.isEmpty();
+        tvEmptyHint.setVisibility(hasFiles ? android.view.View.GONE : android.view.View.VISIBLE);
+        recyclerView.setVisibility(hasFiles ? android.view.View.VISIBLE : android.view.View.GONE);
     }
 
     private void scanFiles(File dir, String relDir, Map<String, List<FileItem>> dirMap, List<FileItem> rootFiles) {
