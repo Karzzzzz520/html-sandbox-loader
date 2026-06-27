@@ -33,9 +33,12 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Stack;
+import java.util.Map;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -44,11 +47,10 @@ public class MainActivity extends AppCompatActivity {
     private WebView webView;
     private MaterialToolbar toolbar, toolbarViewer;
     private FileAdapter adapter;
-    private final List<FileItem> fileItems = new ArrayList<>();
+    private final List<FileAdapter.GroupItem> groups = new ArrayList<>();
     private File sandboxRoot;
     private boolean isViewerMode = false;
 
-    // SAF launcher: import directory
     private final ActivityResultLauncher<Uri> pickTree = registerForActivityResult(
             new ActivityResultContracts.OpenDocumentTree(),
             uri -> {
@@ -59,7 +61,6 @@ public class MainActivity extends AppCompatActivity {
             }
     );
 
-    // SAF launcher: import single file
     private final ActivityResultLauncher<String[]> pickFile = registerForActivityResult(
             new ActivityResultContracts.OpenDocument(),
             uri -> {
@@ -89,12 +90,11 @@ public class MainActivity extends AppCompatActivity {
         setSupportActionBar(toolbar);
 
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
-        adapter = new FileAdapter(fileItems, this::onFileClicked);
+        adapter = new FileAdapter(groups, this::onFileClicked);
         recyclerView.setAdapter(adapter);
 
         configureWebView();
 
-        // Toolbar viewer back button
         toolbarViewer.setNavigationOnClickListener(v -> exitViewer());
 
         refreshFileList();
@@ -118,14 +118,14 @@ public class MainActivity extends AppCompatActivity {
             return true;
         } else if (id == R.id.action_clear_all) {
             new MaterialAlertDialogBuilder(this)
-                    .setTitle("\u6E05\u9664\u6240\u6709")
-                    .setMessage("\u786E\u5B9A\u8981\u6E05\u9664\u6240\u6709\u5BFC\u5165\u7684\u6587\u4EF6\u5417\uFF1F")
-                    .setPositiveButton("\u786E\u5B9A", (d, w) -> {
+                    .setTitle("清除所有")
+                    .setMessage("确定要清除所有导入的文件吗？")
+                    .setPositiveButton("确定", (d, w) -> {
                         wipe(sandboxRoot);
                         sandboxRoot.mkdirs();
                         refreshFileList();
                     })
-                    .setNegativeButton("\u53D6\u6D88", null)
+                    .setNegativeButton("取消", null)
                     .show();
             return true;
         }
@@ -153,7 +153,6 @@ public class MainActivity extends AppCompatActivity {
         isViewerMode = true;
         layoutList.setVisibility(android.view.View.GONE);
         layoutViewer.setVisibility(android.view.View.VISIBLE);
-        toolbarViewer.setTitle(file.getName());
         setSupportActionBar(toolbarViewer);
         loadHtml(file);
     }
@@ -165,7 +164,6 @@ public class MainActivity extends AppCompatActivity {
         setSupportActionBar(toolbar);
         webView.stopLoading();
         webView.loadUrl("about:blank");
-        // Reset webview history
         webView.clearHistory();
     }
 
@@ -198,7 +196,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
-                toolbarViewer.setTitle(view.getTitle() != null ? view.getTitle() : view.getOriginalUrl());
+                toolbarViewer.setTitle(view.getTitle() != null ? view.getTitle() : "HTML View");
             }
         });
     }
@@ -207,16 +205,16 @@ public class MainActivity extends AppCompatActivity {
         try {
             DocumentFile root = DocumentFile.fromTreeUri(this, uri);
             if (root == null || !root.isDirectory()) {
-                toast("\u76EE\u5F55\u65E0\u6548");
+                toast("目录无效");
                 return;
             }
             wipe(sandboxRoot);
             sandboxRoot.mkdirs();
             copyTree(root, sandboxRoot);
             refreshFileList();
-            toast("\u5DF2\u5BFC\u5165\u76EE\u5F55");
+            toast("已导入目录");
         } catch (Exception e) {
-            toast("\u5BFC\u5165\u5931\u8D25: " + e.getMessage());
+            toast("导入失败: " + e.getMessage());
         }
     }
 
@@ -224,7 +222,7 @@ public class MainActivity extends AppCompatActivity {
         try {
             DocumentFile doc = DocumentFile.fromSingleUri(this, uri);
             if (doc == null) {
-                toast("\u6587\u4EF6\u65E0\u6548");
+                toast("文件无效");
                 return;
             }
             String name = doc.getName();
@@ -236,7 +234,7 @@ public class MainActivity extends AppCompatActivity {
             if (target.getParentFile() != null) target.getParentFile().mkdirs();
 
             InputStream in = getContentResolver().openInputStream(uri);
-            if (in == null) { toast("\u65E0\u6CD5\u8BFB\u53D6\u6587\u4EF6"); return; }
+            if (in == null) { toast("无法读取文件"); return; }
             OutputStream out = new FileOutputStream(target);
             byte[] buf = new byte[8192];
             int len;
@@ -245,9 +243,9 @@ public class MainActivity extends AppCompatActivity {
             in.close();
 
             refreshFileList();
-            toast("\u5DF2\u5BFC\u5165: " + name);
+            toast("已导入: " + name);
         } catch (Exception e) {
-            toast("\u5BFC\u5165\u5931\u8D25: " + e.getMessage());
+            toast("导入失败: " + e.getMessage());
         }
     }
 
@@ -275,24 +273,47 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void refreshFileList() {
-        fileItems.clear();
-        scanFiles(sandboxRoot, "");
+        groups.clear();
+        Map<String, List<FileItem>> dirMap = new HashMap<>();
+        scanFiles(sandboxRoot, "", dirMap);
+
+        // Root-level files first
+        List<FileItem> rootFiles = dirMap.remove("");
+        if (rootFiles != null) {
+            for (FileItem fi : rootFiles) {
+                groups.add(new FileAdapter.GroupItem(fi));
+            }
+        }
+
+        // Then directory groups, sorted by name
+        List<String> dirNames = new ArrayList<>(dirMap.keySet());
+        java.util.Collections.sort(dirNames);
+        for (String dirName : dirNames) {
+            groups.add(new FileAdapter.GroupItem(dirName, dirMap.get(dirName)));
+        }
+
         adapter.notifyDataSetChanged();
-        if (fileItems.isEmpty()) {
-            toast("\u6C99\u7BB1\u4E3A\u7A7A\uFF0C\u70B9\u53F3\u4E0A\u89D2\u83DC\u5355\u5BFC\u5165");
+        if (groups.isEmpty()) {
+            toast("沙箱为空，点右上角菜单导入");
         }
     }
 
-    private void scanFiles(File dir, String prefix) {
+    private void scanFiles(File dir, String prefix, Map<String, List<FileItem>> dirMap) {
         File[] children = dir.listFiles();
         if (children == null) return;
+        Arrays.sort(children, Comparator.comparing(File::getName));
         for (File child : children) {
-            String relPath = prefix.isEmpty() ? child.getName() : prefix + "/" + child.getName();
+            String name = child.getName().toLowerCase(Locale.ROOT);
+            boolean isHtml = name.endsWith(".html") || name.endsWith(".htm");
             if (child.isDirectory()) {
-                scanFiles(child, relPath);
-            } else if (child.getName().toLowerCase(Locale.ROOT).endsWith(".html")
-                    || child.getName().toLowerCase(Locale.ROOT).endsWith(".htm")) {
-                fileItems.add(new FileItem(child.getName(), child.getAbsolutePath(), relPath));
+                scanFiles(child, prefix.isEmpty() ? child.getName() : prefix + "/" + child.getName(), dirMap);
+            } else if (isHtml) {
+                String groupKey = prefix;
+                String relPath = prefix.isEmpty() ? child.getName() : prefix + "/" + child.getName();
+                if (!dirMap.containsKey(groupKey)) {
+                    dirMap.put(groupKey, new ArrayList<>());
+                }
+                dirMap.get(groupKey).add(new FileItem(child.getName(), child.getAbsolutePath(), relPath));
             }
         }
     }
@@ -305,7 +326,7 @@ public class MainActivity extends AppCompatActivity {
             html = injectHead(html, cache + "<base href=\"" + base + "\">");
             webView.loadDataWithBaseURL(base + "?t=" + System.currentTimeMillis(), html, "text/html", "UTF-8", null);
         } catch (Exception e) {
-            toast("\u52A0\u8F7D\u5931\u8D25: " + e.getMessage());
+            toast("加载失败: " + e.getMessage());
         }
     }
 
@@ -358,7 +379,6 @@ public class MainActivity extends AppCompatActivity {
         Toast.makeText(this, text, Toast.LENGTH_SHORT).show();
     }
 
-    // Data class
     static class FileItem {
         String name;
         String path;
