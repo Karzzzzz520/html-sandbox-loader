@@ -135,10 +135,6 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onBackPressed() {
         if (isViewerMode) {
-            if (webView.canGoBack()) {
-                webView.goBack();
-                return;
-            }
             exitViewer();
             return;
         }
@@ -293,9 +289,6 @@ public class MainActivity extends AppCompatActivity {
         }
 
         adapter.notifyDataSetChanged();
-        if (groups.isEmpty()) {
-            toast("沙箱为空，点右上角菜单导入");
-        }
     }
 
     private void scanFiles(File dir, String prefix, Map<String, List<FileItem>> dirMap) {
