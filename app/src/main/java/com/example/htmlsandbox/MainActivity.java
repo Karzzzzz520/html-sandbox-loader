@@ -206,11 +206,21 @@ public class MainActivity extends AppCompatActivity {
                 toast("目录无效");
                 return;
             }
+            // Use the directory name as a subfolder under sandbox
             wipe(sandboxRoot);
             sandboxRoot.mkdirs();
-            copyTree(root, sandboxRoot);
+
+            String dirName = root.getName();
+            if (dirName == null || dirName.isEmpty()) {
+                dirName = "imported_" + System.currentTimeMillis();
+            }
+            dirName = dirName.replace('/', '_').replace('\\', '_');
+
+            File subDir = new File(sandboxRoot, dirName);
+            subDir.mkdirs();
+            copyTree(root, subDir);
             refreshFileList();
-            toast("已导入目录");
+            toast("已导入目录: " + dirName);
         } catch (Exception e) {
             toast("导入失败: " + e.getMessage());
         }
@@ -290,7 +300,6 @@ public class MainActivity extends AppCompatActivity {
 
         adapter.notifyDataSetChanged();
 
-        // Toggle empty hint vs recycler
         boolean hasFiles = !groups.isEmpty();
         tvEmptyHint.setVisibility(hasFiles ? android.view.View.GONE : android.view.View.VISIBLE);
         recyclerView.setVisibility(hasFiles ? android.view.View.VISIBLE : android.view.View.GONE);
