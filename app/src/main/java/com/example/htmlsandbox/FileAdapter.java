@@ -1,5 +1,6 @@
 package com.example.htmlsandbox;
 
+import android.util.SparseArray;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -39,23 +40,29 @@ public class FileAdapter extends RecyclerView.Adapter<FileAdapter.GroupViewHolde
         holder.name.setText(group.title);
         holder.count.setText(group.files.size() + " 个文件");
         holder.icon.setRotation(group.expanded ? 90 : 0);
-        holder.content.removeAllViews();
 
+        // Use cached rows if available, only inflate on first expand
         if (group.expanded) {
             holder.content.setVisibility(View.VISIBLE);
-            for (MainActivity.FileItem fi : group.files) {
-                View row = LayoutInflater.from(holder.content.getContext()).inflate(R.layout.item_file_row, holder.content, false);
-                ((TextView) row.findViewById(R.id.tv_file_name)).setText(fi.name);
-                ((TextView) row.findViewById(R.id.tv_file_path)).setText("/" + fi.relativePath);
-                row.setOnClickListener(v -> listener.onFileClick(fi));
-                holder.content.addView(row);
+            if (holder.content.getChildCount() == 0 || group.rowsDirty) {
+                holder.content.removeAllViews();
+                for (MainActivity.FileItem fi : group.files) {
+                    View row = LayoutInflater.from(holder.content.getContext()).inflate(R.layout.item_file_row, holder.content, false);
+                    ((TextView) row.findViewById(R.id.tv_file_name)).setText(fi.name);
+                    ((TextView) row.findViewById(R.id.tv_file_path)).setText("/" + fi.relativePath);
+                    row.setOnClickListener(v -> listener.onFileClick(fi));
+                    holder.content.addView(row);
+                }
+                group.rowsDirty = false;
             }
         } else {
+            // Collapsed: just hide, keep cached views
             holder.content.setVisibility(View.GONE);
         }
 
         holder.itemView.setOnClickListener(v -> {
             group.expanded = !group.expanded;
+            group.rowsDirty = true; // rebuild on next expand to reflect data changes
             notifyItemChanged(position);
         });
     }
@@ -63,6 +70,12 @@ public class FileAdapter extends RecyclerView.Adapter<FileAdapter.GroupViewHolde
     @Override
     public int getItemCount() {
         return groups.size();
+    }
+
+    public void markAllDirty() {
+        for (GroupItem g : groups) {
+            g.rowsDirty = true;
+        }
     }
 
     static class GroupViewHolder extends RecyclerView.ViewHolder {
@@ -82,6 +95,7 @@ public class FileAdapter extends RecyclerView.Adapter<FileAdapter.GroupViewHolde
     public static class GroupItem {
         String title;
         boolean expanded;
+        boolean rowsDirty = true;
         List<MainActivity.FileItem> files;
 
         public GroupItem(String title, List<MainActivity.FileItem> files) {
