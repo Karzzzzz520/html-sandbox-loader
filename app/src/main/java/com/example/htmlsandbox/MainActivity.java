@@ -177,8 +177,9 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
-                if ("file".equalsIgnoreCase(uri.getScheme()))
+                if ("file".equalsIgnoreCase(uri.getScheme())) {
                     return loadFile(uri.getPath());
+                }
                 return null;
             }
 
@@ -227,17 +228,15 @@ public class MainActivity extends AppCompatActivity {
             File target = new File(sandboxRoot, name);
             if (target.getParentFile() != null) target.getParentFile().mkdirs();
 
-            InputStream in = getContentResolver().openInputStream(uri);
-            if (in == null) {
-                toast("无法读取文件");
-                return;
+            try (InputStream in = getContentResolver().openInputStream(uri); OutputStream out = new FileOutputStream(target)) {
+                if (in == null) {
+                    toast("无法读取文件");
+                    return;
+                }
+                byte[] buf = new byte[8192];
+                int len;
+                while ((len = in.read(buf)) != -1) out.write(buf, 0, len);
             }
-            OutputStream out = new FileOutputStream(target);
-            byte[] buf = new byte[8192];
-            int len;
-            while ((len = in.read(buf)) != -1) out.write(buf, 0, len);
-            out.close();
-            in.close();
 
             refreshFileList();
             toast("已导入: " + name);
@@ -257,14 +256,12 @@ public class MainActivity extends AppCompatActivity {
                 copyTree(child, target);
             } else if (child.isFile()) {
                 if (target.getParentFile() != null) target.getParentFile().mkdirs();
-                InputStream in = getContentResolver().openInputStream(child.getUri());
-                if (in == null) continue;
-                OutputStream out = new FileOutputStream(target);
-                byte[] buf = new byte[8192];
-                int len;
-                while ((len = in.read(buf)) != -1) out.write(buf, 0, len);
-                out.close();
-                in.close();
+                try (InputStream in = getContentResolver().openInputStream(child.getUri()); OutputStream out = new FileOutputStream(target)) {
+                    if (in == null) continue;
+                    byte[] buf = new byte[8192];
+                    int len;
+                    while ((len = in.read(buf)) != -1) out.write(buf, 0, len);
+                }
             }
         }
     }
@@ -276,13 +273,11 @@ public class MainActivity extends AppCompatActivity {
         List<FileItem> rootFiles = new ArrayList<>();
         scanFiles(sandboxRoot, "", dirMap, rootFiles);
 
-        // root-only files
         rootFiles.sort(Comparator.comparing(item -> item.name.toLowerCase(Locale.ROOT)));
-        for (FileItem fi : rootFiles) {
-            groups.add(new FileAdapter.GroupItem(fi));
+        for (FileItem item : rootFiles) {
+            groups.add(new FileAdapter.GroupItem(item));
         }
 
-        // directory groups
         List<String> dirNames = new ArrayList<>(dirMap.keySet());
         dirNames.sort(String::compareTo);
         for (String dirName : dirNames) {
@@ -306,16 +301,12 @@ public class MainActivity extends AppCompatActivity {
             }
             String lower = child.getName().toLowerCase(Locale.ROOT);
             if (!(lower.endsWith(".html") || lower.endsWith(".htm"))) continue;
-
             String relPath = relDir.isEmpty() ? child.getName() : relDir + "/" + child.getName();
             FileItem item = new FileItem(child.getName(), child.getAbsolutePath(), relPath);
             if (relDir.isEmpty()) {
                 rootFiles.add(item);
             } else {
-                if (!dirMap.containsKey(relDir)) {
-                    dirMap.put(relDir, new ArrayList<>());
-                }
-                dirMap.get(relDir).add(item);
+                dirMap.computeIfAbsent(relDir, k -> new ArrayList<>()).add(item);
             }
         }
     }
@@ -334,9 +325,9 @@ public class MainActivity extends AppCompatActivity {
 
     private String readText(File file) throws Exception {
         byte[] bytes = new byte[(int) file.length()];
-        FileInputStream in = new FileInputStream(file);
-        int ignored = in.read(bytes);
-        in.close();
+        try (FileInputStream in = new FileInputStream(file)) {
+            in.read(bytes);
+        }
         return new String(bytes, StandardCharsets.UTF_8);
     }
 
