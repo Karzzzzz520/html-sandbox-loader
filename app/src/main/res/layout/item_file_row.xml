@@ -14,5 +14,13 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textSize="14sp"
+        android:textStyle="bold"
         android:textColor="?attr/colorOnSurface" />
+
+    <TextView
+        android:id="@+id/tv_file_path"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="12sp"
+        android:textColor="?attr/colorOnSurfaceVariant" />
 </LinearLayout>
